@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Draw and measure a display at actual size. Calibrate with a ruler and get width, height and diagonal in millimetres or inches.">
+  <meta name="color-scheme" content="dark">
+  <title>Screen Sizer</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #12141a;
+      color: #f2f0eb;
+      --card: #1c1f28;
+      --edge: #343944;
+      --subtle: #acb2bf;
+      --gold: #ffcf7a;
+      --mint: #8fe0ca;
+      --mono: ui-monospace, "SFMono-Regular", Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { margin: 0; }
+    button, select, input { font: inherit; }
+    button, select, input {
+      background: #252934;
+      color: inherit;
+      border: 1px solid var(--edge);
+      border-radius: 7px;
+      min-height: 38px;
+    }
+    button, select { padding: 7px 11px; }
+    button { cursor: pointer; font-size: .85rem; font-weight: 650; }
+    button:hover:not(:disabled) { background: #343946; }
+    button:disabled { opacity: .46; cursor: default; }
+    button.primary { color: #2a1b06; background: var(--gold); border-color: var(--gold); }
+    button.primary:hover:not(:disabled) { background: #ffdf9e; }
+    :focus-visible { outline: 2px solid var(--mint); outline-offset: 3px; }
+    input { min-width: 0; width: 100%; padding: 7px 8px; font: .84rem var(--mono); }
+    select { width: 100%; font-size: .85rem; }
+    p { margin: 0; }
+    .app {
+      max-width: 1800px; margin: auto; padding: 20px clamp(14px, 2.5vw, 36px) 14px;
+      min-height: 100dvh; display: flex; flex-direction: column; gap: 16px;
+    }
+    .masthead { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .brand { display: flex; gap: 12px; align-items: center; }
+    .mark {
+      width: 34px; height: 28px; border: 1px dashed var(--gold); border-radius: 4px;
+      position: relative; flex: none;
+    }
+    .mark::after { content: ""; position: absolute; right: -3px; bottom: -3px; width: 6px; height: 6px; background: var(--gold); }
+    h1 { margin: 0; font-size: 1.35rem; font-weight: 680; letter-spacing: -.035em; }
+    .layout { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 316px; gap: 16px; }
+    .board {
+      position: relative; align-self: start; height: max(470px, calc(100dvh - 112px)); overflow: hidden; cursor: crosshair;
+      border: 1px solid var(--edge); border-radius: 11px; isolation: isolate;
+      background-color: #171a23;
+      background-image: radial-gradient(#424959 1px, transparent 1px);
+      background-position: -1px -1px; background-size: 18px 18px;
+      user-select: none; touch-action: none;
+    }
+    .board.calibrating { border-color: #5e9e8e; }
+    .board-note, .board-empty, .selection, .reference-line, .readout { pointer-events: none; position: absolute; }
+    .board-note {
+      margin: 12px; padding: 6px 9px; border-radius: 5px; background: #202431;
+      color: #d9ddea; font-size: .75rem; font-weight: 600;
+    }
+    .board-empty { inset: 0; display: grid; place-items: center; padding: 18px; text-align: center; }
+    .board-empty > div {
+      color: var(--subtle); padding: 17px 22px; background: #1b1e28; border: 1px solid #343947; border-radius: 8px;
+    }
+    .board-empty strong { color: #f2f0eb; display: block; margin-bottom: 5px; font-size: .92rem; }
+    .board-empty span { font-size: .8rem; }
+    .selection { border: 1px solid var(--gold); background: rgb(255 207 122 / .10); }
+    .selection i {
+      width: 7px; height: 7px; background: var(--gold); position: absolute;
+      transform: translate(-50%, -50%);
+    }
+    .selection i:nth-child(1) { left: 0; top: 0; }
+    .selection i:nth-child(2) { left: 100%; top: 0; }
+    .selection i:nth-child(3) { left: 0; top: 100%; }
+    .selection i:nth-child(4) { left: 100%; top: 100%; }
+    .reference-line { height: 2px; background: var(--mint); }
+    .reference-line::before, .reference-line::after {
+      content: ""; width: 2px; height: 12px; position: absolute; top: -5px; background: var(--mint);
+    }
+    .reference-line::before { left: 0; }
+    .reference-line::after { right: 0; }
+    .readout {
+      padding: 5px 8px; border-radius: 5px; background: var(--gold); color: #21170a;
+      white-space: nowrap; font: 600 .76rem/1.3 var(--mono);
+    }
+    .calibrating .readout { background: var(--mint); }
+    aside { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+    .card { background: var(--card); border: 1px solid var(--edge); padding: 14px; border-radius: 10px; }
+    .card h2 { font-size: .86rem; margin: 0 0 10px; font-weight: 680; }
+    .measurements { display: grid; grid-template-columns: 1fr 1fr; gap: 11px 6px; margin: 0 0 12px; }
+    .measurements div:first-child { grid-column: 1 / -1; border-bottom: 1px solid var(--edge); padding-bottom: 9px; }
+    dt { color: var(--subtle); font-size: .76rem; }
+    dd { margin: 3px 0 0; font: 550 1rem/1.4 var(--mono); }
+    #diagonal { color: var(--gold); font-size: 2.2rem; line-height: 1.14; letter-spacing: -.065em; }
+    .small { color: var(--subtle); font-size: .76rem; line-height: 1.5; }
+    .measurements .small, .small.row-label { display: block; }
+    .row { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+    .row > button { flex: 1 1 auto; }
+    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .two label { display: grid; gap: 4px; }
+    .spacing { margin-top: 8px; }
+    .state { color: var(--mint); }
+    .status { color: var(--mint); margin-top: 8px; }
+    .status:empty { display: none; }
+    footer { color: var(--subtle); font-size: .75rem; }
+    @media (max-width: 730px) {
+      .app { gap: 12px; padding-top: 12px; }
+      .layout { grid-template-columns: 1fr; gap: 12px; }
+      .board { height: clamp(290px, 52dvh, 510px); }
+      aside { display: grid; grid-template-columns: 1fr 1fr; }
+      aside .result-card { grid-column: 1 / -1; }
+    }
+    @media (max-width: 420px) { aside { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="masthead">
+      <div class="brand"><span class="mark" aria-hidden="true"></span><h1>Screen Sizer</h1></div>
+      <button id="fullscreen" type="button" hidden>Full screen</button>
+    </header>
+
+    <main class="layout">
+      <section id="board" class="board" aria-label="Drawing area">
+        <div id="boardNote" class="board-note" hidden>Calibrating physical scale</div>
+        <div id="boardEmpty" class="board-empty">
+          <div><strong id="boardPrompt">Draw a rectangle</strong><span id="boardInstructions">Drag between opposite corners.</span></div>
+        </div>
+        <div id="selection" class="selection" hidden><i></i><i></i><i></i><i></i></div>
+        <div id="referenceLine" class="reference-line" hidden></div>
+        <output id="readout" class="readout" aria-hidden="true" hidden></output>
+      </section>
+
+      <aside aria-label="Measurement controls">
+        <section class="card" aria-labelledby="scaleHeading">
+          <h2 id="scaleHeading">Physical scale</h2>
+          <p id="scaleStatus" class="small">Calibrate once with a ruler to get millimetres and inches.</p>
+          <div class="row spacing">
+            <button id="calibrate" class="primary" type="button">Calibrate</button>
+            <button id="cancel" type="button" hidden>Cancel</button>
+          </div>
+          <div id="scaleControls" hidden>
+            <label class="small row-label spacing" for="reference">Reference length</label>
+            <select id="reference">
+              <option value="100">100 mm on a ruler</option>
+              <option value="50">50 mm on a ruler</option>
+              <option value="25.4">1 inch on a ruler</option>
+              <option value="85.6">Bank card long edge (85.60 mm)</option>
+              <option value="custom">Custom length</option>
+            </select>
+            <label id="customControl" class="small row-label spacing" hidden>
+              Length in mm
+              <input id="customLength" required type="number" min="1" max="10000" step="any" value="25" inputmode="decimal">
+            </label>
+            <p class="small spacing">Hold the reference against the drawing area. Drag horizontally between its marks, or press Escape to cancel.</p>
+          </div>
+        </section>
+
+        <section class="card result-card" aria-labelledby="measureHeading">
+          <h2 id="measureHeading">Selection</h2>
+          <dl class="measurements">
+            <div><dt>Diagonal</dt><dd id="diagonal">—</dd><span id="ratioResult" class="small"></span></div>
+            <div><dt>Width</dt><dd id="width">—</dd><span id="widthInches" class="small"></span></div>
+            <div><dt>Height</dt><dd id="height">—</dd><span id="heightInches" class="small"></span></div>
+          </dl>
+          <div class="row">
+            <button id="copy" type="button" disabled>Copy size</button>
+            <button id="save" type="button" disabled>Save size</button>
+            <button id="clear" type="button" disabled>Clear</button>
+          </div>
+          <p class="small status" id="status" role="status"></p>
+        </section>
+
+        <section class="card" aria-labelledby="shapeHeading">
+          <h2 id="shapeHeading">Shape</h2>
+          <label class="small row-label" for="aspect">Aspect ratio</label>
+          <select id="aspect">
+            <option value="free">Freeform</option>
+            <option value="1">1:1 · Square</option>
+            <option value="4/3">4:3 · Classic</option>
+            <option value="3/2">3:2</option>
+            <option value="16/9">16:9 · Widescreen</option>
+            <option value="21/9">21:9 · Ultrawide</option>
+            <option value="5">5:1 · Bar</option>
+            <option value="9/16">9:16 · Portrait</option>
+          </select>
+          <form id="dimensionsForm" class="spacing">
+            <div class="two">
+              <label class="small"><span id="widthLabel">Width (px)</span><input id="exactWidth" required type="number" min="0.1" step="any" inputmode="decimal"></label>
+              <label class="small"><span id="heightLabel">Height (px)</span><input id="exactHeight" required type="number" min="0.1" step="any" inputmode="decimal"></label>
+            </div>
+            <button class="spacing" type="submit">Draw exact size</button>
+            <p class="small status" id="shapeStatus" role="status"></p>
+          </form>
+        </section>
+      </aside>
+    </main>
+    <footer>Recalibrate after changing browser zoom or moving to another screen.</footer>
+  </div>
+
+  <script>
+    "use strict";
+
+    const element = id => document.getElementById(id);
+    const board = element("board");
+    const selection = element("selection");
+    const readout = element("readout");
+    const referenceLine = element("referenceLine");
+    const fullscreen = element("fullscreen");
+    const minDrawSize = 3;
+    let selected = null;
+    let drag = null;
+    let calibration = null;
+    let calibrating = false;
+    let calibratedDisplay = "";
+    let scaleChanged = false;
+
+    const clamp = (value, min, max) => Math.max(min, Math.min(value, max));
+    const format = (value, digits = 1) => value.toFixed(digits);
+    const scaleKey = () => JSON.stringify([devicePixelRatio, screen.width, screen.height, window.visualViewport?.scale ?? 1]);
+    const text = (id, content) => { element(id).textContent = content; };
+    const show = (id, visible) => { element(id).hidden = !visible; };
+    const referenceLength = () => Number(element("reference").value === "custom" ? element("customLength").value : element("reference").value);
+
+    function checkScale() {
+      if (calibration !== null && scaleKey() !== calibratedDisplay) {
+        calibration = null;
+        scaleChanged = true;
+        text("status", "");
+        return true;
+      }
+      return false;
+    }
+
+    function measurements() {
+      if (!selected) return null;
+      const { width, height } = selected;
+      return {
+        width, height, ratio: width / height,
+        widthMm: calibration === null ? null : width * calibration,
+        heightMm: calibration === null ? null : height * calibration,
+        diagonal: Math.hypot(width, height) * (calibration === null ? 1 : calibration / 25.4),
+      };
+    }
+
+    function place(box, bounds) {
+      Object.assign(box.style, {
+        left: bounds.x + "px", top: bounds.y + "px",
+        width: bounds.width + "px", height: bounds.height + "px",
+      });
+    }
+
+    function labelOnBoard(label, left, above, below) {
+      readout.textContent = label;
+      readout.hidden = false;
+      const x = clamp(left, 4, board.clientWidth - readout.offsetWidth - 4);
+      const y = clamp(above > 5 ? above : below, 4, board.clientHeight - readout.offsetHeight - 4);
+      readout.style.left = x + "px";
+      readout.style.top = y + "px";
+    }
+
+    function draw() {
+      const value = measurements();
+      const line = calibrating && drag?.end;
+      board.classList.toggle("calibrating", calibrating);
+      show("boardNote", calibrating);
+      show("boardEmpty", calibrating ? !line : !value);
+      text("boardPrompt", calibrating ? "Measure the reference" : "Draw a rectangle");
+      text("boardInstructions", calibrating ? "Drag horizontally between the two marks." : "Drag between opposite corners.");
+      selection.hidden = calibrating || !value;
+      referenceLine.hidden = !line;
+      readout.hidden = true;
+      if (line) {
+        const x = Math.min(drag.start.x, drag.end.x);
+        const width = Math.abs(drag.end.x - drag.start.x);
+        place(referenceLine, { x, y: drag.start.y, width, height: 2 });
+        labelOnBoard(format(width, 0) + " px", x, drag.start.y - 34, drag.start.y + 14);
+      } else if (!calibrating && value) {
+        place(selection, selected);
+        const size = calibration === null ? format(value.width, 0) + " × " + format(value.height, 0) + " px"
+          : format(value.widthMm) + " × " + format(value.heightMm) + " mm";
+        labelOnBoard(size, selected.x, selected.y - 33, selected.y + selected.height + 8);
+      }
+    }
+
+    function updatePanels(syncInputs = true) {
+      const value = measurements();
+      const physical = calibration !== null;
+      const scaleStatus = element("scaleStatus");
+      scaleStatus.classList.toggle("state", physical);
+      scaleStatus.textContent = physical ? "Calibrated for this screen" : scaleChanged
+        ? "Screen or zoom changed. Calibrate again for physical sizes."
+        : "Calibrate once with a ruler to get millimetres and inches.";
+      text("calibrate", physical ? "Recalibrate" : "Calibrate");
+      show("calibrate", !calibrating);
+      show("cancel", calibrating);
+      show("scaleControls", calibrating);
+      show("customControl", element("reference").value === "custom");
+      text("widthLabel", physical ? "Width (mm)" : "Width (px)");
+      text("heightLabel", physical ? "Height (mm)" : "Height (px)");
+      text("diagonal", value ? format(value.diagonal, physical ? 2 : 0) + (physical ? "″" : " px") : "—");
+      text("ratioResult", value ? format(value.ratio, 2) + ":1 width to height" : "");
+      for (const [axis, metric] of [["width", "widthMm"], ["height", "heightMm"]]) {
+        text(axis, value ? (physical ? format(value[metric]) + " mm" : format(value[axis], 0) + " px") : "—");
+        text(axis + "Inches", physical && value ? format(value[metric] / 25.4, 2) + " in" : "");
+        if (syncInputs) element(axis === "width" ? "exactWidth" : "exactHeight").value =
+          value ? format(physical ? value[metric] : value[axis], 2) : "";
+      }
+      for (const id of ["copy", "save", "clear"]) element(id).disabled = !value || calibrating;
+    }
+
+    function render(syncInputs = true) {
+      const invalidated = checkScale();
+      draw();
+      updatePanels(syncInputs || invalidated);
+    }
+
+    function pointAt(event) {
+      const bounds = board.getBoundingClientRect();
+      return {
+        x: clamp(event.clientX - bounds.left - board.clientLeft, 0, board.clientWidth),
+        y: clamp(event.clientY - bounds.top - board.clientTop, 0, board.clientHeight),
+      };
+    }
+
+    function cornerAnchor(point) {
+      if (!selected || calibrating) return point;
+      const { x, y, width, height } = selected;
+      const corners = [
+        [{ x, y }, { x: x + width, y: y + height }],
+        [{ x: x + width, y }, { x, y: y + height }],
+        [{ x, y: y + height }, { x: x + width, y }],
+        [{ x: x + width, y: y + height }, { x, y }],
+      ];
+      return corners.find(([corner]) => Math.hypot(point.x - corner.x, point.y - corner.y) <= 12)?.[1] ?? point;
+    }
+
+    function rectangle(anchor, point, square) {
+      const [numerator, denominator = 1] = element("aspect").value.split("/").map(Number);
+      const ratio = square ? 1 : numerator / denominator;
+      const directionX = point.x < anchor.x ? -1 : 1;
+      const directionY = point.y < anchor.y ? -1 : 1;
+      let width = Math.abs(point.x - anchor.x);
+      let height = Math.abs(point.y - anchor.y);
+      if (ratio) {
+        const maxWidth = directionX < 0 ? anchor.x : board.clientWidth - anchor.x;
+        const maxHeight = directionY < 0 ? anchor.y : board.clientHeight - anchor.y;
+        width = Math.min(Math.max(width, height * ratio), maxWidth, maxHeight * ratio);
+        height = width / ratio;
+      }
+      return { x: anchor.x - (directionX < 0 ? width : 0), y: anchor.y - (directionY < 0 ? height : 0), width, height };
+    }
+
+    board.addEventListener("pointerdown", event => {
+      if (event.button !== 0 || !event.isPrimary || drag) return;
+      const start = pointAt(event);
+      if (calibrating && element("reference").value === "custom" && !element("customLength").reportValidity()) {
+        return;
+      }
+      drag = { id: event.pointerId, start, anchor: cornerAnchor(start), previous: selected };
+      board.setPointerCapture(event.pointerId);
+      text("status", "");
+      text("shapeStatus", "");
+    });
+
+    function updateDrag(event) {
+      if (!drag || drag.id !== event.pointerId) return;
+      drag.end = pointAt(event);
+      if (!calibrating) selected = rectangle(drag.anchor, drag.end, event.shiftKey);
+      render(!calibrating);
+    }
+
+    board.addEventListener("pointermove", updateDrag);
+    board.addEventListener("pointerup", event => {
+      if (!drag || drag.id !== event.pointerId) return;
+      updateDrag(event);
+      const { previous, start, end } = drag;
+      drag = null;
+      if (calibrating) {
+        const span = Math.abs(end.x - start.x);
+        if (span < 10) text("status", "Drag across the full reference length.");
+        else {
+          calibration = referenceLength() / span;
+          calibratedDisplay = scaleKey();
+          scaleChanged = false;
+          calibrating = false;
+          text("status", "Physical scale saved for this tab.");
+        }
+      } else if (selected.width < minDrawSize || selected.height < minDrawSize) selected = previous;
+      render();
+    });
+
+    function cancelDrag(event) {
+      if (!drag || (event && drag.id !== event.pointerId)) return;
+      selected = drag.previous;
+      drag = null;
+      render();
+    }
+
+    board.addEventListener("pointercancel", cancelDrag);
+    board.addEventListener("lostpointercapture", cancelDrag);
+    element("calibrate").onclick = () => {
+      cancelDrag();
+      calibrating = true;
+      text("status", "");
+      text("shapeStatus", "");
+      render(false);
+      element("reference").focus({ preventScroll: true });
+    };
+    element("cancel").onclick = () => {
+      cancelDrag();
+      calibrating = false;
+      text("status", "");
+      render(false);
+      element("calibrate").focus({ preventScroll: true });
+    };
+    element("reference").onchange = () => render(false);
+    element("clear").onclick = () => {
+      selected = null;
+      text("status", "");
+      text("shapeStatus", "");
+      render();
+    };
+    document.addEventListener("keydown", event => {
+      if (event.key !== "Escape") return;
+      if (calibrating) element("cancel").click();
+      else cancelDrag();
+    });
+
+    element("dimensionsForm").onsubmit = event => {
+      event.preventDefault();
+      const formerScale = calibration;
+      checkScale();
+      if (formerScale !== calibration && formerScale !== null) {
+        render();
+        text("shapeStatus", "Recalibrate before entering millimetres.");
+        return;
+      }
+      const width = Number(element("exactWidth").value) / (calibration ?? 1);
+      const height = Number(element("exactHeight").value) / (calibration ?? 1);
+      if (calibrating) {
+        text("shapeStatus", "Finish or cancel calibration first.");
+        return;
+      }
+      if (width > board.clientWidth || height > board.clientHeight) {
+        text("shapeStatus", "That size exceeds the drawing area. Try full screen or a larger monitor.");
+        return;
+      }
+      selected = { x: (board.clientWidth - width) / 2, y: (board.clientHeight - height) / 2, width, height };
+      element("aspect").value = "free";
+      text("status", "");
+      text("shapeStatus", "");
+      render();
+    };
+
+    function sizeSummary(value) {
+      return calibration === null
+        ? format(value.width, 0) + " × " + format(value.height, 0) + " CSS px, " + format(value.diagonal, 0) + " px diagonal"
+        : format(value.widthMm) + " × " + format(value.heightMm) + " mm, " + format(value.diagonal, 2) + " in diagonal";
+    }
+
+    element("copy").onclick = async () => {
+      render();
+      const value = measurements();
+      if (!value) return;
+      const summary = sizeSummary(value);
+      try {
+        await navigator.clipboard.writeText(summary);
+        text("status", "Copied " + summary + ".");
+      } catch {
+        const field = document.createElement("textarea");
+        field.value = summary;
+        field.setAttribute("readonly", "");
+        field.style.position = "fixed";
+        field.style.opacity = "0";
+        document.body.append(field);
+        field.select();
+        let copied = false;
+        try { copied = document.execCommand("copy"); } catch { /* The size is still available below. */ }
+        field.remove();
+        element("copy").focus({ preventScroll: true });
+        text("status", (copied ? "Copied " : "") + summary + ".");
+      }
+    };
+
+    element("save").onclick = () => {
+      render();
+      const value = measurements();
+      if (!value) return;
+      const numeric = (number, digits = 2) => Number(format(number, digits));
+      const size = { width_css_px: numeric(value.width), height_css_px: numeric(value.height), aspect_ratio: numeric(value.ratio, 4) };
+      if (calibration !== null) Object.assign(size, {
+        active_width_mm: numeric(value.widthMm),
+        active_height_mm: numeric(value.heightMm),
+        diagonal_inches: numeric(value.diagonal),
+      });
+      const blob = new Blob([JSON.stringify(size, null, 2) + "\n"], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "screen-size.json";
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      text("status", "Downloaded screen-size.json.");
+    };
+
+    fullscreen.hidden = !document.fullscreenEnabled;
+    fullscreen.onclick = async () => {
+      try {
+        if (document.fullscreenElement) await document.exitFullscreen();
+        else await document.documentElement.requestFullscreen();
+      } catch {
+        text("status", "Full screen is unavailable in this browser window.");
+      }
+    };
+    document.addEventListener("fullscreenchange", () => {
+      fullscreen.textContent = document.fullscreenElement ? "Exit full screen" : "Full screen";
+    });
+
+    function resizeBoard() {
+      if (drag) { render(false); return; }
+      let cleared = false;
+      if (selected && (selected.width > board.clientWidth || selected.height > board.clientHeight)) {
+        selected = null;
+        cleared = true;
+        text("status", "The selection exceeded the resized drawing area. Draw it again in the larger view.");
+      } else if (selected) {
+        selected.x = clamp(selected.x, 0, board.clientWidth - selected.width);
+        selected.y = clamp(selected.y, 0, board.clientHeight - selected.height);
+      }
+      render(cleared);
+    }
+
+    new ResizeObserver(resizeBoard).observe(board);
+    window.addEventListener("resize", resizeBoard);
+    window.visualViewport?.addEventListener("resize", resizeBoard);
+    render();
+  </script>
+</body>
+</html>
