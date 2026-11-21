@@ -41,7 +41,7 @@
     select { width: 100%; font-size: .85rem; }
     p { margin: 0; }
     .app {
-      max-width: 1800px; margin: auto; padding: 20px clamp(14px, 2.5vw, 36px) 14px;
+      padding: 20px clamp(14px, 2.5vw, 36px) 14px;
       min-height: 100dvh; display: flex; flex-direction: column; gap: 16px;
     }
     .masthead { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -102,7 +102,9 @@
     dd { margin: 3px 0 0; font: 550 1rem/1.4 var(--mono); }
     #diagonal { color: var(--gold); font-size: 2.2rem; line-height: 1.14; letter-spacing: -.065em; }
     .small { color: var(--subtle); font-size: .76rem; line-height: 1.5; }
-    .measurements .small, .small.row-label { display: block; }
+    .measurements dd.small { font: .76rem/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .measurements dd.small:empty { display: none; }
+    .small.row-label { display: block; }
     .row { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
     .row > button { flex: 1 1 auto; }
     .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -116,6 +118,7 @@
       .app { gap: 12px; padding-top: 12px; }
       .layout { grid-template-columns: 1fr; gap: 12px; }
       .board { height: clamp(290px, 52dvh, 510px); }
+      input, select { font-size: 16px; }
       aside { display: grid; grid-template-columns: 1fr 1fr; }
       aside .result-card { grid-column: 1 / -1; }
     }
@@ -168,9 +171,9 @@
         <section class="card result-card" aria-labelledby="measureHeading">
           <h2 id="measureHeading">Selection</h2>
           <dl class="measurements">
-            <div><dt>Diagonal</dt><dd id="diagonal">—</dd><span id="ratioResult" class="small"></span></div>
-            <div><dt>Width</dt><dd id="width">—</dd><span id="widthInches" class="small"></span></div>
-            <div><dt>Height</dt><dd id="height">—</dd><span id="heightInches" class="small"></span></div>
+            <div><dt>Diagonal</dt><dd id="diagonal">—</dd><dd id="ratioResult" class="small"></dd></div>
+            <div><dt>Width</dt><dd id="width">—</dd><dd id="widthInches" class="small"></dd></div>
+            <div><dt>Height</dt><dd id="height">—</dd><dd id="heightInches" class="small"></dd></div>
           </dl>
           <div class="row">
             <button id="copy" type="button" disabled>Copy size</button>
@@ -271,8 +274,10 @@
     function draw() {
       const value = measurements();
       const line = calibrating && drag?.end;
+      const clipped = value && (value.width > board.clientWidth || value.height > board.clientHeight);
       board.classList.toggle("calibrating", calibrating);
-      show("boardNote", calibrating);
+      show("boardNote", calibrating || clipped);
+      text("boardNote", calibrating ? "Calibrating physical scale" : "Selection extends beyond the drawing area");
       show("boardEmpty", calibrating ? !line : !value);
       text("boardPrompt", calibrating ? "Measure the reference" : "Draw a rectangle");
       text("boardInstructions", calibrating ? "Drag horizontally between the two marks." : "Drag between opposite corners.");
@@ -529,17 +534,11 @@
     });
 
     function resizeBoard() {
-      if (drag) { render(false); return; }
-      let cleared = false;
-      if (selected && (selected.width > board.clientWidth || selected.height > board.clientHeight)) {
-        selected = null;
-        cleared = true;
-        text("status", "The selection exceeded the resized drawing area. Draw it again in the larger view.");
-      } else if (selected) {
-        selected.x = clamp(selected.x, 0, board.clientWidth - selected.width);
-        selected.y = clamp(selected.y, 0, board.clientHeight - selected.height);
+      if (selected && !drag) {
+        selected.x = clamp(selected.x, 0, Math.max(0, board.clientWidth - selected.width));
+        selected.y = clamp(selected.y, 0, Math.max(0, board.clientHeight - selected.height));
       }
-      render(cleared);
+      render(false);
     }
 
     new ResizeObserver(resizeBoard).observe(board);
